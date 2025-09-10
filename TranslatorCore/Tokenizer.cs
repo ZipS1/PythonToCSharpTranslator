@@ -1,4 +1,5 @@
-﻿using System;
+﻿// TranslatorCore/Tokenizer.cs
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -33,7 +34,8 @@ namespace TranslatorCore
         private readonly string _source;
         private int _position;
         private static readonly HashSet<string> Keywords = new() { "if", "else", "while", "for", "def", "return", "input", "print" };
-        private static readonly HashSet<char> Symbols = new() { '(', ')', ':', ',', '+', '-', '*', '/', '=', '[', ']', '{', '}', '<', '>' };
+        private static readonly HashSet<string> TwoCharSymbols = new() { "==", "!=", "<=", ">=", "//", "**" };
+        private static readonly HashSet<char> SingleSymbols = new() { '(', ')', ':', ',', '+', '-', '*', '/', '%', '=', '[', ']', '{', '}', '<', '>' };
 
         public Tokenizer(string source)
         {
@@ -55,6 +57,7 @@ namespace TranslatorCore
 
                 char current = _source[_position];
 
+                // Identifier or keyword
                 if (char.IsLetter(current) || current == '_')
                 {
                     int start = _position;
@@ -69,6 +72,7 @@ namespace TranslatorCore
                     continue;
                 }
 
+                // Number literal
                 if (char.IsDigit(current))
                 {
                     int start = _position;
@@ -82,6 +86,7 @@ namespace TranslatorCore
                     continue;
                 }
 
+                // String literal
                 if (current == '"' || current == '\'')
                 {
                     char quote = current;
@@ -93,20 +98,34 @@ namespace TranslatorCore
                         sb.Append(_source[_position]);
                         _position++;
                     }
-                    _position++;
+                    _position++; // closing quote
                     tokens.Add(new Token(TokenType.String, sb.ToString(), start));
                     continue;
                 }
 
-                if (Symbols.Contains(current))
+                // Two-character symbols
+                if (_position + 1 < _source.Length)
+                {
+                    string two = _source.Substring(_position, 2);
+                    if (TwoCharSymbols.Contains(two))
+                    {
+                        tokens.Add(new Token(TokenType.Symbol, two, _position));
+                        _position += 2;
+                        continue;
+                    }
+                }
+
+                // Single-character symbols
+                if (SingleSymbols.Contains(current))
                 {
                     tokens.Add(new Token(TokenType.Symbol, current.ToString(), _position));
                     _position++;
                     continue;
                 }
 
-                throw new TranslationException($"Unexpected character '{current}' at position {_position}");
+                throw new TranslationException($"Неожиданный символ '{current}' на позиции {_position}");
             }
+
             return tokens;
         }
 

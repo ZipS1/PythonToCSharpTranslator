@@ -36,6 +36,7 @@ namespace TranslatorCore
         public string Operator { get; }
         public ExpressionNode Left { get; }
         public ExpressionNode Right { get; }
+
         public BinaryExpressionNode(ExpressionNode left, string op, ExpressionNode right)
         {
             Left = left;
@@ -131,12 +132,7 @@ namespace TranslatorCore
 
         private Token Current => _tokens[_position];
 
-        private Token Consume()
-        {
-            var tok = Current;
-            _position++;
-            return tok;
-        }
+        private Token Consume() => _tokens[_position++];
 
         private bool Match(string value)
         {
@@ -152,9 +148,7 @@ namespace TranslatorCore
         {
             var program = new ProgramNode();
             while (Current.Type != TokenType.EndOfFile)
-            {
                 program.Statements.Add(ParseStatement());
-            }
             return program;
         }
 
@@ -168,41 +162,35 @@ namespace TranslatorCore
             return ParseExpressionOrAssignment();
         }
 
-        private AstNode ParseIf()
+        private IfNode ParseIf()
         {
             Consume(); // if
-            var condition = ParseExpression();
+            var cond = ParseExpression();
             Match(":");
-            var ifNode = new IfNode(condition);
+            var node = new IfNode(cond);
             while (Current.Type != TokenType.EndOfFile && Current.Value != "else")
-            {
-                ifNode.ThenBranch.Add(ParseStatement());
-            }
+                node.ThenBranch.Add(ParseStatement());
             if (Match("else"))
             {
                 Match(":");
                 while (Current.Type != TokenType.EndOfFile)
-                {
-                    ifNode.ElseBranch.Add(ParseStatement());
-                }
+                    node.ElseBranch.Add(ParseStatement());
             }
-            return ifNode;
+            return node;
         }
 
-        private AstNode ParseWhile()
+        private WhileNode ParseWhile()
         {
             Consume(); // while
-            var condition = ParseExpression();
+            var cond = ParseExpression();
             Match(":");
-            var whileNode = new WhileNode(condition);
+            var node = new WhileNode(cond);
             while (Current.Type != TokenType.EndOfFile)
-            {
-                whileNode.Body.Add(ParseStatement());
-            }
-            return whileNode;
+                node.Body.Add(ParseStatement());
+            return node;
         }
 
-        private AstNode ParseFor()
+        private ForNode ParseFor()
         {
             Consume(); // for
             var iter = new IdentifierNode(Consume().Value);
@@ -214,37 +202,31 @@ namespace TranslatorCore
             var end = ParseExpression();
             Match(")");
             Match(":");
-            var forNode = new ForNode(iter, start, end);
+            var node = new ForNode(iter, start, end);
             while (Current.Type != TokenType.EndOfFile)
-            {
-                forNode.Body.Add(ParseStatement());
-            }
-            return forNode;
+                node.Body.Add(ParseStatement());
+            return node;
         }
 
-        private AstNode ParseFunction()
+        private FunctionNode ParseFunction()
         {
             Consume(); // def
-            string name = Consume().Value;
+            var name = Consume().Value;
             Match("(");
             var fn = new FunctionNode(name);
             if (!Match(")"))
             {
-                do
-                {
-                    fn.Parameters.Add(Consume().Value);
-                } while (Match(","));
+                do { fn.Parameters.Add(Consume().Value); }
+                while (Match(","));
                 Match(")");
             }
             Match(":");
             while (Current.Type != TokenType.EndOfFile)
-            {
                 fn.Body.Add(ParseStatement());
-            }
             return fn;
         }
 
-        private AstNode ParseReturn()
+        private ReturnNode ParseReturn()
         {
             Consume(); // return
             var expr = ParseExpression();
@@ -254,44 +236,31 @@ namespace TranslatorCore
         private AstNode ParseExpressionOrAssignment()
         {
             var expr = ParseExpression();
-
             if (expr is IdentifierNode id && Match("="))
             {
                 var value = ParseExpression();
                 return new AssignmentNode(id, value);
             }
-
-            // списки
             if (Match("["))
             {
                 var list = new ListNode();
                 if (!Match("]"))
                 {
-                    do
-                    {
-                        list.Elements.Add(ParseExpression());
-                    } while (Match(","));
+                    do { list.Elements.Add(ParseExpression()); }
+                    while (Match(","));
                     Match("]");
                 }
                 return new ExpressionStatementNode(list);
             }
-
-            if (expr is IdentifierNode || expr is BinaryExpressionNode == false && expr is CallExpressionNode == false && expr is StringNode == false && expr is NumberNode == false && expr is ListNode == false)
-            {
-                throw new TranslationException($"Неподдерживаемое выражение '{(expr as IdentifierNode)?.Name ?? expr.GetType().Name}' на позиции {Current.Position}");
-            }
-
             return new ExpressionStatementNode(expr);
         }
 
         private ExpressionNode ParseExpression()
         {
             var left = ParsePrimary();
-            while (Current.Value == "+" || Current.Value == "-" || Current.Value == "*" ||
-                   Current.Value == "/" || Current.Value == "<" || Current.Value == ">" ||
-                   Current.Value == "==")
+            while (new[] { "+", "-", "*", "/", "%", "==", "!=", "<", "<=", ">", ">=" }.Contains(Current.Value))
             {
-                string op = Consume().Value;
+                var op = Consume().Value;
                 var right = ParsePrimary();
                 left = new BinaryExpressionNode(left, op, right);
             }
@@ -301,37 +270,23 @@ namespace TranslatorCore
         private ExpressionNode ParsePrimary()
         {
             if (Current.Type == TokenType.Number)
-            {
-                var node = new NumberNode(Current.Value);
-                Consume();
-                return node;
-            }
+                return new NumberNode(Consume().Value);
             if (Current.Type == TokenType.String)
-            {
-                var node = new StringNode(Current.Value);
-                Consume();
-                return node;
-            }
+                return new StringNode(Consume().Value);
             if (Current.Type == TokenType.Identifier || Current.Type == TokenType.Keyword)
             {
-                string name = Current.Value;
-                Consume();
-
-                // вызов функции
+                var name = Consume().Value;
                 if (Match("("))
                 {
                     var call = new CallExpressionNode(name);
                     if (!Match(")"))
                     {
-                        do
-                        {
-                            call.Arguments.Add(ParseExpression());
-                        } while (Match(","));
+                        do { call.Arguments.Add(ParseExpression()); }
+                        while (Match(","));
                         Match(")");
                     }
                     return call;
                 }
-
                 return new IdentifierNode(name);
             }
             if (Match("("))
@@ -340,7 +295,7 @@ namespace TranslatorCore
                 Match(")");
                 return expr;
             }
-            throw new TranslationException($"Unexpected token '{Current.Value}' at position {Current.Position}");
+            throw new TranslationException($"Неожиданный токен '{Current.Value}' на позиции {Current.Position}");
         }
     }
 }

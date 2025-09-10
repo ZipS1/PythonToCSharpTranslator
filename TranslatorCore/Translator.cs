@@ -103,7 +103,7 @@ namespace TranslatorCore
                     return;
 
                 default:
-                    Warnings.Add($"Unsupported statement type: {node.GetType().Name}");
+                    Warnings.Add($"Неподдерживаемое высказывание: {node.GetType().Name}");
                     return;
             }
         }
@@ -147,7 +147,7 @@ namespace TranslatorCore
                     return $"new object[] {{ {elems} }}";
 
                 default:
-                    Warnings.Add($"Unsupported expression type: {expr.GetType().Name}");
+                    Warnings.Add($"Неподдерживаемое выражение: {expr.GetType().Name}");
                     return "null";
             }
         }
