@@ -1,6 +1,7 @@
 ﻿// TranslatorCore/Parser.cs
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace TranslatorCore
 {
@@ -13,252 +14,141 @@ namespace TranslatorCore
 
     public abstract class ExpressionNode : AstNode { }
 
-    public class NumberNode : ExpressionNode
-    {
-        public string Value { get; }
-        public NumberNode(string value) => Value = value;
-    }
-
-    public class StringNode : ExpressionNode
-    {
-        public string Value { get; }
-        public StringNode(string value) => Value = value;
-    }
-
-    public class IdentifierNode : ExpressionNode
-    {
-        public string Name { get; }
-        public IdentifierNode(string name) => Name = name;
-    }
-
-    public class BinaryExpressionNode : ExpressionNode
-    {
-        public string Operator { get; }
-        public ExpressionNode Left { get; }
-        public ExpressionNode Right { get; }
-
-        public BinaryExpressionNode(ExpressionNode left, string op, ExpressionNode right)
-        {
-            Left = left;
-            Operator = op;
-            Right = right;
-        }
-    }
-
-    public class CallExpressionNode : ExpressionNode
-    {
-        public string FunctionName { get; }
-        public List<ExpressionNode> Arguments { get; } = new();
-        public CallExpressionNode(string functionName) => FunctionName = functionName;
-    }
-
-    public class ListNode : ExpressionNode
-    {
-        public List<ExpressionNode> Elements { get; } = new();
-    }
+    public class NumberNode : ExpressionNode { public string Value; public NumberNode(string v) => Value = v; }
+    public class StringNode : ExpressionNode { public string Value; public StringNode(string v) => Value = v; }
+    public class IdentifierNode : ExpressionNode { public string Name; public IdentifierNode(string n) => Name = n; }
+    public class BinaryExpressionNode : ExpressionNode { public ExpressionNode Left; public string Operator; public ExpressionNode Right; public BinaryExpressionNode(ExpressionNode l, string op, ExpressionNode r) { Left = l; Operator = op; Right = r; } }
+    public class CallExpressionNode : ExpressionNode { public string FunctionName; public List<ExpressionNode> Arguments = new(); public CallExpressionNode(string fn) => FunctionName = fn; }
+    public class ListNode : ExpressionNode { public List<ExpressionNode> Elements = new(); }
+    public class IndexExpressionNode : ExpressionNode { public ExpressionNode Collection, Index; public IndexExpressionNode(ExpressionNode c, ExpressionNode i) { Collection = c; Index = i; } }
 
     public abstract class StatementNode : AstNode { }
-
-    public class ExpressionStatementNode : StatementNode
-    {
-        public ExpressionNode Expression { get; }
-        public ExpressionStatementNode(ExpressionNode expr) => Expression = expr;
-    }
-
-    public class AssignmentNode : StatementNode
-    {
-        public IdentifierNode Target { get; }
-        public ExpressionNode Value { get; }
-        public AssignmentNode(IdentifierNode target, ExpressionNode value)
-        {
-            Target = target;
-            Value = value;
-        }
-    }
-
-    public class IfNode : StatementNode
-    {
-        public ExpressionNode Condition { get; }
-        public List<AstNode> ThenBranch { get; } = new();
-        public List<AstNode> ElseBranch { get; } = new();
-        public IfNode(ExpressionNode cond) => Condition = cond;
-    }
-
-    public class WhileNode : StatementNode
-    {
-        public ExpressionNode Condition { get; }
-        public List<AstNode> Body { get; } = new();
-        public WhileNode(ExpressionNode cond) => Condition = cond;
-    }
-
-    public class ForNode : StatementNode
-    {
-        public IdentifierNode Iterator { get; }
-        public ExpressionNode Start { get; }
-        public ExpressionNode End { get; }
-        public List<AstNode> Body { get; } = new();
-        public ForNode(IdentifierNode iter, ExpressionNode start, ExpressionNode end)
-        {
-            Iterator = iter;
-            Start = start;
-            End = end;
-        }
-    }
-
-    public class FunctionNode : StatementNode
-    {
-        public string Name { get; }
-        public List<string> Parameters { get; } = new();
-        public List<AstNode> Body { get; } = new();
-        public FunctionNode(string name) => Name = name;
-    }
-
-    public class ReturnNode : StatementNode
-    {
-        public ExpressionNode Expression { get; }
-        public ReturnNode(ExpressionNode expr) => Expression = expr;
-    }
+    public class ExpressionStatementNode : StatementNode { public ExpressionNode Expression; public ExpressionStatementNode(ExpressionNode e) => Expression = e; }
+    public class AssignmentNode : StatementNode { public IdentifierNode Target; public ExpressionNode Value; public AssignmentNode(IdentifierNode t, ExpressionNode v) { Target = t; Value = v; } }
+    public class IfNode : StatementNode { public ExpressionNode Condition; public List<AstNode> ThenBranch = new(), ElseBranch = new(); public IfNode(ExpressionNode c) => Condition = c; }
+    public class WhileNode : StatementNode { public ExpressionNode Condition; public List<AstNode> Body = new(); public WhileNode(ExpressionNode c) => Condition = c; }
+    public class ForNode : StatementNode { public IdentifierNode Iterator; public ExpressionNode Start, End; public List<AstNode> Body = new(); public ForNode(IdentifierNode i, ExpressionNode s, ExpressionNode e) { Iterator = i; Start = s; End = e; } }
+    public class FunctionNode : StatementNode { public string Name; public List<string> Parameters = new(); public List<AstNode> Body = new(); public FunctionNode(string n) => Name = n; }
+    public class ReturnNode : StatementNode { public ExpressionNode Expression; public ReturnNode(ExpressionNode e) => Expression = e; }
 
     public class Parser
     {
         private readonly List<Token> _tokens;
-        private int _position;
+        private int _pos;
+        private static readonly string[] BinOps = { "+", "-", "*", "/", "%", "==", "!=", ">=", "<=", "<", ">" };
 
-        public Parser(List<Token> tokens)
-        {
-            _tokens = tokens;
-            _position = 0;
-        }
-
-        private Token Current => _tokens[_position];
-
-        private Token Consume() => _tokens[_position++];
-
-        private bool Match(string value)
-        {
-            if (Current.Value == value)
-            {
-                _position++;
-                return true;
-            }
-            return false;
-        }
+        public Parser(List<Token> tokens) { _tokens = tokens; _pos = 0; }
+        private Token Curr => _tokens[_pos];
+        private Token Consume() => _tokens[_pos++];
+        private bool Match(TokenType t) { if (Curr.Type == t) { _pos++; return true; } return false; }
+        private bool MatchValue(string v) { if (Curr.Value == v) { _pos++; return true; } return false; }
 
         public ProgramNode Parse()
         {
-            var program = new ProgramNode();
-            while (Current.Type != TokenType.EndOfFile)
-                program.Statements.Add(ParseStatement());
-            return program;
+            var prog = new ProgramNode();
+            while (!Match(TokenType.EndOfFile))
+                prog.Statements.Add(ParseStmt());
+            return prog;
         }
 
-        private AstNode ParseStatement()
+        private StatementNode ParseStmt()
         {
-            if (Current.Value == "if") return ParseIf();
-            if (Current.Value == "while") return ParseWhile();
-            if (Current.Value == "for") return ParseFor();
-            if (Current.Value == "def") return ParseFunction();
-            if (Current.Value == "return") return ParseReturn();
-            return ParseExpressionOrAssignment();
+            if (MatchValue("def")) return ParseDef();
+            if (MatchValue("if")) return ParseIf();
+            if (MatchValue("while")) return ParseWhile();
+            if (MatchValue("for")) return ParseFor();
+            if (MatchValue("return")) return ParseReturn();
+            return ParseExprOrAssign();
+        }
+
+        private FunctionNode ParseDef()
+        {
+            var name = Consume().Value; Consume(); // '('
+            var fn = new FunctionNode(name);
+            if (!MatchValue(")"))
+            {
+                do { fn.Parameters.Add(Consume().Value); }
+                while (MatchValue(","));
+                Consume(); // ')'
+            }
+            Consume(); // ':'
+            Match(TokenType.NewLine);
+            Consume(); // Indent
+            while (!Match(TokenType.Dedent))
+                fn.Body.Add(ParseStmt());
+            return fn;
         }
 
         private IfNode ParseIf()
         {
-            Consume(); // if
-            var cond = ParseExpression();
-            Match(":");
+            var cond = ParseExpr(); Consume(); // ':'
+            Match(TokenType.NewLine);
+            Consume(); // Indent
             var node = new IfNode(cond);
-            while (Current.Type != TokenType.EndOfFile && Current.Value != "else")
-                node.ThenBranch.Add(ParseStatement());
-            if (Match("else"))
+            while (!Match(TokenType.Dedent))
+                node.ThenBranch.Add(ParseStmt());
+            if (MatchValue("else"))
             {
-                Match(":");
-                while (Current.Type != TokenType.EndOfFile)
-                    node.ElseBranch.Add(ParseStatement());
+                Consume(); // ':'
+                Match(TokenType.NewLine);
+                Consume(); // Indent
+                while (!Match(TokenType.Dedent))
+                    node.ElseBranch.Add(ParseStmt());
             }
             return node;
         }
 
         private WhileNode ParseWhile()
         {
-            Consume(); // while
-            var cond = ParseExpression();
-            Match(":");
+            var cond = ParseExpr(); Consume(); // ':'
+            Match(TokenType.NewLine);
+            Consume(); // Indent
             var node = new WhileNode(cond);
-            while (Current.Type != TokenType.EndOfFile)
-                node.Body.Add(ParseStatement());
+            while (!Match(TokenType.Dedent))
+                node.Body.Add(ParseStmt());
             return node;
         }
 
         private ForNode ParseFor()
         {
-            Consume(); // for
             var iter = new IdentifierNode(Consume().Value);
-            Match("in");
-            Match("range");
-            Match("(");
-            var start = ParseExpression();
-            Match(",");
-            var end = ParseExpression();
-            Match(")");
-            Match(":");
+            Consume(); // 'in'
+            Consume(); // 'range'
+            Consume(); // '('
+            var start = ParseExpr(); Consume(); // ','
+            var end = ParseExpr(); Consume(); // ')'
+            Consume(); // ':'
+            Match(TokenType.NewLine);
+            Consume(); // Indent
             var node = new ForNode(iter, start, end);
-            while (Current.Type != TokenType.EndOfFile)
-                node.Body.Add(ParseStatement());
+            while (!Match(TokenType.Dedent))
+                node.Body.Add(ParseStmt());
             return node;
-        }
-
-        private FunctionNode ParseFunction()
-        {
-            Consume(); // def
-            var name = Consume().Value;
-            Match("(");
-            var fn = new FunctionNode(name);
-            if (!Match(")"))
-            {
-                do { fn.Parameters.Add(Consume().Value); }
-                while (Match(","));
-                Match(")");
-            }
-            Match(":");
-            while (Current.Type != TokenType.EndOfFile)
-                fn.Body.Add(ParseStatement());
-            return fn;
         }
 
         private ReturnNode ParseReturn()
         {
-            Consume(); // return
-            var expr = ParseExpression();
+            var expr = ParseExpr(); Consume(); // NewLine
             return new ReturnNode(expr);
         }
 
-        private AstNode ParseExpressionOrAssignment()
+        private StatementNode ParseExprOrAssign()
         {
-            var expr = ParseExpression();
-            if (expr is IdentifierNode id && Match("="))
+            var expr = ParseExpr();
+            if (expr is IdentifierNode id && MatchValue("="))
             {
-                var value = ParseExpression();
-                return new AssignmentNode(id, value);
+                var val = ParseExpr();
+                Consume(); // NewLine
+                return new AssignmentNode(id, val);
             }
-            if (Match("["))
-            {
-                var list = new ListNode();
-                if (!Match("]"))
-                {
-                    do { list.Elements.Add(ParseExpression()); }
-                    while (Match(","));
-                    Match("]");
-                }
-                return new ExpressionStatementNode(list);
-            }
+            Consume(); // NewLine
             return new ExpressionStatementNode(expr);
         }
 
-        private ExpressionNode ParseExpression()
+        private ExpressionNode ParseExpr()
         {
             var left = ParsePrimary();
-            while (new[] { "+", "-", "*", "/", "%", "==", "!=", "<", "<=", ">", ">=" }.Contains(Current.Value))
+            while (BinOps.Contains(Curr.Value))
             {
                 var op = Consume().Value;
                 var right = ParsePrimary();
@@ -269,33 +159,50 @@ namespace TranslatorCore
 
         private ExpressionNode ParsePrimary()
         {
-            if (Current.Type == TokenType.Number)
-                return new NumberNode(Consume().Value);
-            if (Current.Type == TokenType.String)
-                return new StringNode(Consume().Value);
-            if (Current.Type == TokenType.Identifier || Current.Type == TokenType.Keyword)
+            if (Match(TokenType.Number)) return new NumberNode(_tokens[_pos - 1].Value);
+            if (Match(TokenType.String)) return new StringNode(_tokens[_pos - 1].Value);
+            if (Match(TokenType.Identifier) || Match(TokenType.Keyword))
             {
-                var name = Consume().Value;
-                if (Match("("))
+                var nm = _tokens[_pos - 1].Value;
+                if (MatchValue("("))
                 {
-                    var call = new CallExpressionNode(name);
-                    if (!Match(")"))
+                    var call = new CallExpressionNode(nm);
+                    if (!MatchValue(")"))
                     {
-                        do { call.Arguments.Add(ParseExpression()); }
-                        while (Match(","));
-                        Match(")");
+                        do { call.Arguments.Add(ParseExpr()); }
+                        while (MatchValue(","));
+                        Consume(); // ')'
                     }
-                    return call;
+                    return ParseIndexOrCall(call);
                 }
-                return new IdentifierNode(name);
+                return ParseIndexOrCall(new IdentifierNode(nm));
             }
-            if (Match("("))
+            if (MatchValue("("))
             {
-                var expr = ParseExpression();
-                Match(")");
-                return expr;
+                var e = ParseExpr(); Consume(); return e;
             }
-            throw new TranslationException($"Неожиданный токен '{Current.Value}' на позиции {Current.Position}");
+            if (MatchValue("["))
+            {
+                var list = new ListNode();
+                if (!MatchValue("]"))
+                {
+                    do { list.Elements.Add(ParseExpr()); }
+                    while (MatchValue(","));
+                    Consume(); // ']'
+                }
+                return list;
+            }
+            throw new TranslationException($"Неожиданный токен '{Curr.Value}' на позиции {Curr.Position}");
+        }
+
+        private ExpressionNode ParseIndexOrCall(ExpressionNode target)
+        {
+            while (MatchValue("["))
+            {
+                var idx = ParseExpr(); Consume(); // ']'
+                target = new IndexExpressionNode(target, idx);
+            }
+            return target;
         }
     }
 }

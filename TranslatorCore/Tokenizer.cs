@@ -12,6 +12,9 @@ namespace TranslatorCore
         String,
         Keyword,
         Symbol,
+        NewLine,
+        Indent,
+        Dedent,
         EndOfFile
     }
 
@@ -32,15 +35,20 @@ namespace TranslatorCore
     public class Tokenizer
     {
         private readonly string _source;
-        private int _position;
+        private int _pos;
+        private int _lineStart;
+        private readonly Stack<int> _indentStack = new();
+
         private static readonly HashSet<string> Keywords = new() { "if", "else", "while", "for", "def", "return", "input", "print" };
         private static readonly HashSet<string> TwoCharSymbols = new() { "==", "!=", "<=", ">=", "//", "**" };
         private static readonly HashSet<char> SingleSymbols = new() { '(', ')', ':', ',', '+', '-', '*', '/', '%', '=', '[', ']', '{', '}', '<', '>' };
 
         public Tokenizer(string source)
         {
-            _source = source;
-            _position = 0;
+            _source = source.Replace("\r\n", "\n");
+            _pos = 0;
+            _lineStart = 0;
+            _indentStack.Push(0);
         }
 
         public List<Token> Tokenize()
@@ -48,93 +56,119 @@ namespace TranslatorCore
             var tokens = new List<Token>();
             while (true)
             {
-                SkipWhitespace();
-                if (_position >= _source.Length)
+                if (_pos >= _source.Length)
                 {
-                    tokens.Add(new Token(TokenType.EndOfFile, string.Empty, _position));
+                    while (_indentStack.Count > 1)
+                    {
+                        _indentStack.Pop();
+                        tokens.Add(new Token(TokenType.Dedent, "", _pos));
+                    }
+                    tokens.Add(new Token(TokenType.EndOfFile, "", _pos));
                     break;
                 }
 
-                char current = _source[_position];
-
-                // Identifier or keyword
-                if (char.IsLetter(current) || current == '_')
+                if (_pos == _lineStart)
                 {
-                    int start = _position;
-                    var sb = new StringBuilder();
-                    while (_position < _source.Length && (char.IsLetterOrDigit(_source[_position]) || _source[_position] == '_'))
+                    int count = 0;
+                    while (_pos < _source.Length && _source[_pos] == ' ')
                     {
-                        sb.Append(_source[_position]);
-                        _position++;
+                        count++;
+                        _pos++;
                     }
-                    string word = sb.ToString();
-                    tokens.Add(new Token(Keywords.Contains(word) ? TokenType.Keyword : TokenType.Identifier, word, start));
+                    if (_pos < _source.Length && _source[_pos] == '\n')
+                    {
+                        _pos++;
+                        _lineStart = _pos;
+                        tokens.Add(new Token(TokenType.NewLine, "", _pos));
+                        continue;
+                    }
+                    int prev = _indentStack.Peek();
+                    if (count > prev)
+                    {
+                        _indentStack.Push(count);
+                        tokens.Add(new Token(TokenType.Indent, "", _pos));
+                    }
+                    else
+                    {
+                        while (count < prev)
+                        {
+                            _indentStack.Pop();
+                            prev = _indentStack.Peek();
+                            tokens.Add(new Token(TokenType.Dedent, "", _pos));
+                        }
+                    }
+                }
+
+                char c = _source[_pos];
+
+                if (c == '\n')
+                {
+                    tokens.Add(new Token(TokenType.NewLine, "", _pos));
+                    _pos++;
+                    _lineStart = _pos;
                     continue;
                 }
 
-                // Number literal
-                if (char.IsDigit(current))
+                if (char.IsWhiteSpace(c))
                 {
-                    int start = _position;
+                    _pos++;
+                    continue;
+                }
+
+                if (char.IsLetter(c) || c == '_')
+                {
+                    int start = _pos;
                     var sb = new StringBuilder();
-                    while (_position < _source.Length && char.IsDigit(_source[_position]))
-                    {
-                        sb.Append(_source[_position]);
-                        _position++;
-                    }
+                    while (_pos < _source.Length && (char.IsLetterOrDigit(_source[_pos]) || _source[_pos] == '_'))
+                        sb.Append(_source[_pos++]);
+                    string w = sb.ToString();
+                    tokens.Add(new Token(Keywords.Contains(w) ? TokenType.Keyword : TokenType.Identifier, w, start));
+                    continue;
+                }
+
+                if (char.IsDigit(c))
+                {
+                    int start = _pos;
+                    var sb = new StringBuilder();
+                    while (_pos < _source.Length && char.IsDigit(_source[_pos]))
+                        sb.Append(_source[_pos++]);
                     tokens.Add(new Token(TokenType.Number, sb.ToString(), start));
                     continue;
                 }
 
-                // String literal
-                if (current == '"' || current == '\'')
+                if (c == '"' || c == '\'')
                 {
-                    char quote = current;
-                    int start = _position;
-                    _position++;
+                    char q = c;
+                    int start = _pos++;
                     var sb = new StringBuilder();
-                    while (_position < _source.Length && _source[_position] != quote)
-                    {
-                        sb.Append(_source[_position]);
-                        _position++;
-                    }
-                    _position++; // closing quote
+                    while (_pos < _source.Length && _source[_pos] != q)
+                        sb.Append(_source[_pos++]);
+                    _pos++;
                     tokens.Add(new Token(TokenType.String, sb.ToString(), start));
                     continue;
                 }
 
-                // Two-character symbols
-                if (_position + 1 < _source.Length)
+                if (_pos + 1 < _source.Length)
                 {
-                    string two = _source.Substring(_position, 2);
+                    string two = _source.Substring(_pos, 2);
                     if (TwoCharSymbols.Contains(two))
                     {
-                        tokens.Add(new Token(TokenType.Symbol, two, _position));
-                        _position += 2;
+                        tokens.Add(new Token(TokenType.Symbol, two, _pos));
+                        _pos += 2;
                         continue;
                     }
                 }
 
-                // Single-character symbols
-                if (SingleSymbols.Contains(current))
+                if (SingleSymbols.Contains(c))
                 {
-                    tokens.Add(new Token(TokenType.Symbol, current.ToString(), _position));
-                    _position++;
+                    tokens.Add(new Token(TokenType.Symbol, c.ToString(), _pos));
+                    _pos++;
                     continue;
                 }
 
-                throw new TranslationException($"Неожиданный символ '{current}' на позиции {_position}");
+                throw new TranslationException($"Неожиданный символ '{c}' на позиции {_pos}");
             }
-
             return tokens;
-        }
-
-        private void SkipWhitespace()
-        {
-            while (_position < _source.Length && char.IsWhiteSpace(_source[_position]))
-            {
-                _position++;
-            }
         }
     }
 }
