@@ -83,7 +83,7 @@
             // 
             // lblWarning
             // 
-            lblWarning.Font = new Font("Segoe UI", 16.2F, FontStyle.Regular, GraphicsUnit.Point, 204);
+            lblWarning.Font = new Font("Segoe UI", 10.2F, FontStyle.Regular, GraphicsUnit.Point, 204);
             lblWarning.ForeColor = Color.Red;
             lblWarning.Location = new Point(101, 451);
             lblWarning.Name = "lblWarning";
@@ -91,7 +91,7 @@
             lblWarning.TabIndex = 5;
             lblWarning.TextAlign = ContentAlignment.MiddleCenter;
             // 
-            // Form1
+            // MainForm
             // 
             AutoScaleDimensions = new SizeF(8F, 20F);
             AutoScaleMode = AutoScaleMode.Font;
@@ -102,7 +102,7 @@
             Controls.Add(txtResult);
             Controls.Add(txtSource);
             Controls.Add(btnOpenFile);
-            Name = "Form1";
+            Name = "MainForm";
             Text = "Form1";
             ResumeLayout(false);
             PerformLayout();

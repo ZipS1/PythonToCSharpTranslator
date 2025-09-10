@@ -174,14 +174,14 @@ namespace TranslatorCore
             var condition = ParseExpression();
             Match(":");
             var ifNode = new IfNode(condition);
-            while (Current.Type != TokenType.EndOfFile && Current.Value != "else" && Current.Value != "")
+            while (Current.Type != TokenType.EndOfFile && Current.Value != "else")
             {
                 ifNode.ThenBranch.Add(ParseStatement());
             }
             if (Match("else"))
             {
                 Match(":");
-                while (Current.Type != TokenType.EndOfFile && Current.Value != "")
+                while (Current.Type != TokenType.EndOfFile)
                 {
                     ifNode.ElseBranch.Add(ParseStatement());
                 }
@@ -195,7 +195,7 @@ namespace TranslatorCore
             var condition = ParseExpression();
             Match(":");
             var whileNode = new WhileNode(condition);
-            while (Current.Type != TokenType.EndOfFile && Current.Value != "")
+            while (Current.Type != TokenType.EndOfFile)
             {
                 whileNode.Body.Add(ParseStatement());
             }
@@ -215,7 +215,7 @@ namespace TranslatorCore
             Match(")");
             Match(":");
             var forNode = new ForNode(iter, start, end);
-            while (Current.Type != TokenType.EndOfFile && Current.Value != "")
+            while (Current.Type != TokenType.EndOfFile)
             {
                 forNode.Body.Add(ParseStatement());
             }
@@ -237,7 +237,7 @@ namespace TranslatorCore
                 Match(")");
             }
             Match(":");
-            while (Current.Type != TokenType.EndOfFile && Current.Value != "")
+            while (Current.Type != TokenType.EndOfFile)
             {
                 fn.Body.Add(ParseStatement());
             }
@@ -274,6 +274,11 @@ namespace TranslatorCore
                     Match("]");
                 }
                 return new ExpressionStatementNode(list);
+            }
+
+            if (expr is IdentifierNode || expr is BinaryExpressionNode == false && expr is CallExpressionNode == false && expr is StringNode == false && expr is NumberNode == false && expr is ListNode == false)
+            {
+                throw new TranslationException($"Неподдерживаемое выражение '{(expr as IdentifierNode)?.Name ?? expr.GetType().Name}' на позиции {Current.Position}");
             }
 
             return new ExpressionStatementNode(expr);
