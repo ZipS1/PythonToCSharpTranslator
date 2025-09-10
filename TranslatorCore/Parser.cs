@@ -1,4 +1,5 @@
-﻿using System;
+﻿// TranslatorCore/Parser.cs
+using System;
 using System.Collections.Generic;
 
 namespace TranslatorCore
@@ -10,7 +11,7 @@ namespace TranslatorCore
         public List<AstNode> Statements { get; } = new();
     }
 
-    public class ExpressionNode : AstNode { }
+    public abstract class ExpressionNode : AstNode { }
 
     public class NumberNode : ExpressionNode
     {
@@ -41,6 +42,18 @@ namespace TranslatorCore
             Operator = op;
             Right = right;
         }
+    }
+
+    public class CallExpressionNode : ExpressionNode
+    {
+        public string FunctionName { get; }
+        public List<ExpressionNode> Arguments { get; } = new();
+        public CallExpressionNode(string functionName) => FunctionName = functionName;
+    }
+
+    public class ListNode : ExpressionNode
+    {
+        public List<ExpressionNode> Elements { get; } = new();
     }
 
     public abstract class StatementNode : AstNode { }
@@ -85,7 +98,9 @@ namespace TranslatorCore
         public List<AstNode> Body { get; } = new();
         public ForNode(IdentifierNode iter, ExpressionNode start, ExpressionNode end)
         {
-            Iterator = iter; Start = start; End = end;
+            Iterator = iter;
+            Start = start;
+            End = end;
         }
     }
 
@@ -159,7 +174,7 @@ namespace TranslatorCore
             var condition = ParseExpression();
             Match(":");
             var ifNode = new IfNode(condition);
-            while (!Match("else") && Current.Value != "" && Current.Type != TokenType.EndOfFile)
+            while (Current.Type != TokenType.EndOfFile && Current.Value != "else" && Current.Value != "")
             {
                 ifNode.ThenBranch.Add(ParseStatement());
             }
@@ -192,7 +207,6 @@ namespace TranslatorCore
             Consume(); // for
             var iter = new IdentifierNode(Consume().Value);
             Match("in");
-            // only support range(start, end)
             Match("range");
             Match("(");
             var start = ParseExpression();
@@ -240,19 +254,37 @@ namespace TranslatorCore
         private AstNode ParseExpressionOrAssignment()
         {
             var expr = ParseExpression();
+
             if (expr is IdentifierNode id && Match("="))
             {
                 var value = ParseExpression();
                 return new AssignmentNode(id, value);
             }
+
+            // списки
+            if (Match("["))
+            {
+                var list = new ListNode();
+                if (!Match("]"))
+                {
+                    do
+                    {
+                        list.Elements.Add(ParseExpression());
+                    } while (Match(","));
+                    Match("]");
+                }
+                return new ExpressionStatementNode(list);
+            }
+
             return new ExpressionStatementNode(expr);
         }
 
         private ExpressionNode ParseExpression()
         {
             var left = ParsePrimary();
-            while (Current.Value == "+" || Current.Value == "-" || Current.Value == "*" || Current.Value == "/" ||
-                   Current.Value == "<" || Current.Value == ">" || Current.Value == "==")
+            while (Current.Value == "+" || Current.Value == "-" || Current.Value == "*" ||
+                   Current.Value == "/" || Current.Value == "<" || Current.Value == ">" ||
+                   Current.Value == "==")
             {
                 string op = Consume().Value;
                 var right = ParsePrimary();
@@ -277,8 +309,24 @@ namespace TranslatorCore
             }
             if (Current.Type == TokenType.Identifier || Current.Type == TokenType.Keyword)
             {
-                var name = Current.Value;
+                string name = Current.Value;
                 Consume();
+
+                // вызов функции
+                if (Match("("))
+                {
+                    var call = new CallExpressionNode(name);
+                    if (!Match(")"))
+                    {
+                        do
+                        {
+                            call.Arguments.Add(ParseExpression());
+                        } while (Match(","));
+                        Match(")");
+                    }
+                    return call;
+                }
+
                 return new IdentifierNode(name);
             }
             if (Match("("))
@@ -287,7 +335,7 @@ namespace TranslatorCore
                 Match(")");
                 return expr;
             }
-            throw new TranslationException($"Unexpected token {Current.Value} at position {Current.Position}");
+            throw new TranslationException($"Unexpected token '{Current.Value}' at position {Current.Position}");
         }
     }
 }

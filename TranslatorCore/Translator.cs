@@ -1,4 +1,5 @@
-﻿using System;
+﻿// TranslatorCore/Translator.cs
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -92,11 +93,20 @@ namespace TranslatorCore
         {
             switch (expr)
             {
-                case NumberNode n: return n.Value;
-                case StringNode s: return $"\"{s.Value}\"";
-                case IdentifierNode id: return id.Name;
+                case NumberNode n:
+                    return n.Value;
+                case StringNode s:
+                    return $"\"{s.Value}\"";
+                case IdentifierNode id:
+                    return id.Name;
                 case BinaryExpressionNode b:
                     return $"{VisitExpression(b.Left)} {b.Operator} {VisitExpression(b.Right)}";
+                case CallExpressionNode c:
+                    var args = string.Join(", ", c.Arguments.ConvertAll(VisitExpression));
+                    return $"{c.FunctionName}({args})";
+                case ListNode l:
+                    var elems = string.Join(", ", l.Elements.ConvertAll(VisitExpression));
+                    return $"new object[] {{ {elems} }}";
                 default:
                     Warnings.Add($"Unsupported expression type: {expr.GetType().Name}");
                     return "null";
@@ -108,7 +118,10 @@ namespace TranslatorCore
             WriteIndent();
             _sb.AppendLine("{");
             _indentLevel++;
-            foreach (var stmt in stmts) VisitStatement(stmt);
+            foreach (var stmt in stmts)
+            {
+                VisitStatement(stmt);
+            }
             _indentLevel--;
             WriteIndent();
             _sb.AppendLine("}");
