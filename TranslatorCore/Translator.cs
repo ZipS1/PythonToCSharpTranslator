@@ -1,4 +1,5 @@
-﻿using System;
+﻿// TranslatorCore/Translator.cs
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -125,10 +126,20 @@ namespace TranslatorCore
 
                 case CallExpressionNode c:
                     var args = string.Join(", ", c.Arguments.ConvertAll(VisitExpression));
+                    // Python built-in casts
                     if (c.FunctionName == "input")
                         return "Console.ReadLine()";
                     if (c.FunctionName == "print")
                         return $"Console.WriteLine({args})";
+                    if (c.FunctionName == "int")
+                        return $"int.Parse({args})";
+                    if (c.FunctionName == "float")
+                        return $"double.Parse({args})";
+                    if (c.FunctionName == "str")
+                        return $"{args}.ToString()";
+                    if (c.FunctionName == "bool")
+                        return $"bool.Parse({args})";
+                    // fallback to method call
                     return $"{c.FunctionName}({args})";
 
                 case ListNode l:
