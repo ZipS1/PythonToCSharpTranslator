@@ -24,7 +24,7 @@ namespace TranslatorCore
             _sb.AppendLine("{");
             Indent();
 
-            // Emit function definitions first
+            // Генерируем определения функций
             foreach (var stmt in program.Statements)
             {
                 if (stmt is FunctionNode fn)
@@ -34,7 +34,7 @@ namespace TranslatorCore
                 }
             }
 
-            // Emit Main
+            // Генерируем Main
             _sb.AppendLine("public static void Main()");
             _sb.AppendLine("{");
             _indentLevel++;

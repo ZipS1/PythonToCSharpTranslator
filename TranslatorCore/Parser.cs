@@ -23,6 +23,7 @@ namespace TranslatorCore
     public class IndexExpressionNode : ExpressionNode { public ExpressionNode Collection, Index; public IndexExpressionNode(ExpressionNode c, ExpressionNode i) { Collection = c; Index = i; } }
 
     public abstract class StatementNode : AstNode { }
+
     public class ExpressionStatementNode : StatementNode { public ExpressionNode Expression; public ExpressionStatementNode(ExpressionNode e) => Expression = e; }
     public class AssignmentNode : StatementNode { public IdentifierNode Target; public ExpressionNode Value; public AssignmentNode(IdentifierNode t, ExpressionNode v) { Target = t; Value = v; } }
     public class IfNode : StatementNode { public ExpressionNode Condition; public List<AstNode> ThenBranch = new(), ElseBranch = new(); public IfNode(ExpressionNode c) => Condition = c; }
@@ -63,7 +64,8 @@ namespace TranslatorCore
 
         private FunctionNode ParseDef()
         {
-            var name = Consume().Value; Consume(); // '('
+            var name = Consume().Value;
+            Consume(); // '('
             var fn = new FunctionNode(name);
             if (!MatchValue(")"))
             {
@@ -81,7 +83,8 @@ namespace TranslatorCore
 
         private IfNode ParseIf()
         {
-            var cond = ParseExpr(); Consume(); // ':'
+            var cond = ParseExpr();
+            Consume(); // ':'
             Match(TokenType.NewLine);
             Consume(); // Indent
             var node = new IfNode(cond);
@@ -100,7 +103,8 @@ namespace TranslatorCore
 
         private WhileNode ParseWhile()
         {
-            var cond = ParseExpr(); Consume(); // ':'
+            var cond = ParseExpr();
+            Consume(); // ':'
             Match(TokenType.NewLine);
             Consume(); // Indent
             var node = new WhileNode(cond);
@@ -115,8 +119,10 @@ namespace TranslatorCore
             Consume(); // 'in'
             Consume(); // 'range'
             Consume(); // '('
-            var start = ParseExpr(); Consume(); // ','
-            var end = ParseExpr(); Consume(); // ')'
+            var start = ParseExpr();
+            Consume(); // ','
+            var end = ParseExpr();
+            Consume(); // ')'
             Consume(); // ':'
             Match(TokenType.NewLine);
             Consume(); // Indent
@@ -128,7 +134,8 @@ namespace TranslatorCore
 
         private ReturnNode ParseReturn()
         {
-            var expr = ParseExpr(); Consume(); // NewLine
+            var expr = ParseExpr();
+            Consume(); // NewLine
             return new ReturnNode(expr);
         }
 
@@ -179,7 +186,9 @@ namespace TranslatorCore
             }
             if (MatchValue("("))
             {
-                var e = ParseExpr(); Consume(); return e;
+                var e = ParseExpr();
+                Consume();
+                return e;
             }
             if (MatchValue("["))
             {
@@ -199,7 +208,8 @@ namespace TranslatorCore
         {
             while (MatchValue("["))
             {
-                var idx = ParseExpr(); Consume(); // ']'
+                var idx = ParseExpr();
+                Consume(); // ']'
                 target = new IndexExpressionNode(target, idx);
             }
             return target;

@@ -39,7 +39,7 @@ namespace TranslatorCore
         private int _lineStart;
         private readonly Stack<int> _indentStack = new();
 
-        private static readonly HashSet<string> Keywords = new() { "if", "else", "while", "for", "def", "return", "input", "print" };
+        private static readonly HashSet<string> Keywords = new() { "if", "else", "while", "for", "def", "return", "input", "print", "import", "set", "range" };
         private static readonly HashSet<string> TwoCharSymbols = new() { "==", "!=", "<=", ">=", "//", "**" };
         private static readonly HashSet<char> SingleSymbols = new() { '(', ')', ':', ',', '+', '-', '*', '/', '%', '=', '[', ']', '{', '}', '<', '>' };
 
@@ -100,6 +100,14 @@ namespace TranslatorCore
                 }
 
                 char c = _source[_pos];
+
+                // Comments
+                if (c == '#')
+                {
+                    while (_pos < _source.Length && _source[_pos] != '\n')
+                        _pos++;
+                    continue;
+                }
 
                 if (c == '\n')
                 {
