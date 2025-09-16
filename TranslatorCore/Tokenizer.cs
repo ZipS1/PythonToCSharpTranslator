@@ -175,13 +175,46 @@ namespace TranslatorCore
                     continue;
                 }
 
-                if (char.IsDigit(c))
+                // Numbers: integer, float, scientific notation
+                if (char.IsDigit(c) || (c == '.' && _pos + 1 < _source.Length && char.IsDigit(_source[_pos + 1])))
                 {
                     int start = _pos;
                     int col = _pos - _lineStart + 1;
                     var sb = new StringBuilder();
+
+                    // integer part
                     while (_pos < _source.Length && char.IsDigit(_source[_pos]))
                         sb.Append(_source[_pos++]);
+
+                    // fractional part
+                    if (_pos < _source.Length && _source[_pos] == '.')
+                    {
+                        sb.Append(_source[_pos++]);
+                        while (_pos < _source.Length && char.IsDigit(_source[_pos]))
+                            sb.Append(_source[_pos++]);
+                    }
+
+                    // exponent part
+                    if (_pos < _source.Length && (_source[_pos] == 'e' || _source[_pos] == 'E'))
+                    {
+                        int expPos = _pos;
+                        sb.Append(_source[_pos++]);
+                        if (_pos < _source.Length && (_source[_pos] == '+' || _source[_pos] == '-'))
+                            sb.Append(_source[_pos++]);
+                        bool hasDigit = false;
+                        while (_pos < _source.Length && char.IsDigit(_source[_pos]))
+                        {
+                            hasDigit = true;
+                            sb.Append(_source[_pos++]);
+                        }
+                        if (!hasDigit)
+                        {
+                            // rollback if malformed exponent
+                            _pos = expPos;
+                            sb.Length = sb.Length - 0; // no-op, keep prior content
+                        }
+                    }
+
                     tokens.Add(new Token(TokenType.Number, sb.ToString(), start, _currentLine, col));
                     continue;
                 }
@@ -193,8 +226,19 @@ namespace TranslatorCore
                     int col = start - _lineStart + 1;
                     var sb = new StringBuilder();
                     while (_pos < _source.Length && _source[_pos] != q)
+                    {
+                        if (_source[_pos] == '\\' && _pos + 1 < _source.Length)
+                        {
+                            // preserve escape sequences
+                            sb.Append(_source[_pos]);
+                            _pos++;
+                            sb.Append(_source[_pos]);
+                            _pos++;
+                            continue;
+                        }
                         sb.Append(_source[_pos++]);
-                    _pos++;
+                    }
+                    if (_pos < _source.Length) _pos++;
                     tokens.Add(new Token(TokenType.String, sb.ToString(), start, _currentLine, col));
                     continue;
                 }

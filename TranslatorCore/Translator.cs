@@ -103,6 +103,11 @@ namespace TranslatorCore
                         _sb.AppendLine($"{name} = {expr};");
                     break;
 
+                case IndexAssignmentNode ia:
+                    WriteIndent();
+                    _sb.AppendLine($"{VisitExpression(ia.Collection)}[{VisitExpression(ia.Index)}] = {VisitExpression(ia.Value)};");
+                    break;
+
                 case AugmentedAssignmentNode aa:
                     WriteIndent();
                     _sb.AppendLine($"{aa.Target.Name} {aa.Operator} {VisitExpression(aa.Value)};");
@@ -169,6 +174,7 @@ namespace TranslatorCore
                     {
                         "and" => $"{l}&&{r}",
                         "or" => $"{l}||{r}",
+                        "**" => $"Math.Pow({l}, {r})",
                         _ => $"{l}{b.Operator}{r}"
                     };
                 case CallExpressionNode c:

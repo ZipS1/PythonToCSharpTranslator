@@ -29,6 +29,7 @@ namespace TranslatorCore
     public class ExpressionStatementNode : StatementNode { public ExpressionNode Expression; public ExpressionStatementNode(ExpressionNode e) => Expression = e; }
     public class AssignmentNode : StatementNode { public IdentifierNode Target; public ExpressionNode Value; public AssignmentNode(IdentifierNode t, ExpressionNode v) { Target = t; Value = v; } }
     public class AugmentedAssignmentNode : StatementNode { public IdentifierNode Target; public string Operator; public ExpressionNode Value; public AugmentedAssignmentNode(IdentifierNode t, string op, ExpressionNode v) { Target = t; Operator = op; Value = v; } }
+    public class IndexAssignmentNode : StatementNode { public ExpressionNode Collection; public ExpressionNode Index; public ExpressionNode Value; public IndexAssignmentNode(ExpressionNode c, ExpressionNode i, ExpressionNode v) { Collection = c; Index = i; Value = v; } }
     public class IfNode : StatementNode { public ExpressionNode Condition; public List<AstNode> ThenBranch = new(), ElseBranch = new(); public IfNode(ExpressionNode c) => Condition = c; }
     public class WhileNode : StatementNode { public ExpressionNode Condition; public List<AstNode> Body = new(); public WhileNode(ExpressionNode c) => Condition = c; }
     public class ForNode : StatementNode { public IdentifierNode Iterator; public ExpressionNode Start, End; public List<AstNode> Body = new(); public ForNode(IdentifierNode i, ExpressionNode s, ExpressionNode e) { Iterator = i; Start = s; End = e; } }
@@ -97,20 +98,35 @@ namespace TranslatorCore
 
         private IfNode ParseIf()
         {
-            var cond = ParseExpr(); Consume(); Match(TokenType.NewLine); Consume();
+            var cond = ParseExpr();
+            Consume(); // ':'
+            Match(TokenType.NewLine);
+            while (Match(TokenType.NewLine)) { }
+            if (!Match(TokenType.Indent)) throw new TranslationException($"Expected indent after if at line {Curr.Line}");
             var n = new IfNode(cond);
             while (!Match(TokenType.Dedent))
             {
                 if (Match(TokenType.NewLine)) continue;
                 n.ThenBranch.Add(ParseStmt());
             }
-            if (MatchValue("else")) { Consume(); Match(TokenType.NewLine); Consume(); while (!Match(TokenType.Dedent)) { if (Match(TokenType.NewLine)) continue; n.ElseBranch.Add(ParseStmt()); } }
+            if (MatchValue("else"))
+            {
+                Consume(); // ':'
+                Match(TokenType.NewLine);
+                while (Match(TokenType.NewLine)) { }
+                if (!Match(TokenType.Indent)) throw new TranslationException($"Expected indent after else at line {Curr.Line}");
+                while (!Match(TokenType.Dedent)) { if (Match(TokenType.NewLine)) continue; n.ElseBranch.Add(ParseStmt()); }
+            }
             return n;
         }
 
         private WhileNode ParseWhile()
         {
-            var cond = ParseExpr(); Consume(); Match(TokenType.NewLine); Consume();
+            var cond = ParseExpr();
+            Consume(); // ':'
+            Match(TokenType.NewLine);
+            while (Match(TokenType.NewLine)) { }
+            if (!Match(TokenType.Indent)) throw new TranslationException($"Expected indent after while at line {Curr.Line}");
             var w = new WhileNode(cond);
             while (!Match(TokenType.Dedent))
             {
@@ -128,7 +144,11 @@ namespace TranslatorCore
             Consume(); // '('
             var st = ParseExpr(); Consume();
             var en = ParseExpr(); Consume();
-            Consume(); Match(TokenType.NewLine); Consume();
+            Consume(); // ')'
+            Consume(); // ':'
+            Match(TokenType.NewLine);
+            while (Match(TokenType.NewLine)) { }
+            if (!Match(TokenType.Indent)) throw new TranslationException($"Expected indent after for at line {Curr.Line}");
             var f = new ForNode(iter, st, en);
             while (!Match(TokenType.Dedent))
             {
@@ -149,16 +169,24 @@ namespace TranslatorCore
             var e = ParseExpr();
             if (e is IdentifierNode id && MatchValue("="))
             {
-                var v = ParseExpr(); Consume();
+                var v = ParseExpr();
+                Match(TokenType.NewLine);
                 return new AssignmentNode(id, v);
+            }
+            if (e is IndexExpressionNode ixe && MatchValue("="))
+            {
+                var v = ParseExpr();
+                Match(TokenType.NewLine);
+                return new IndexAssignmentNode(ixe.Collection, ixe.Index, v);
             }
             if (e is IdentifierNode aid && (Peek(0).Value == "+=" || Peek(0).Value == "-=" || Peek(0).Value == "*=" || Peek(0).Value == "/=") && MatchValue(Peek(0).Value))
             {
                 var op = _tokens[_pos - 1].Value;
-                var v = ParseExpr(); Consume();
+                var v = ParseExpr();
+                Match(TokenType.NewLine);
                 return new AugmentedAssignmentNode(aid, op, v);
             }
-            Consume();
+            Match(TokenType.NewLine);
             return new ExpressionStatementNode(e);
         }
 
@@ -204,10 +232,10 @@ namespace TranslatorCore
 
         private ExpressionNode ParseAdd()
         {
-            var l = ParseMul();
+            var l = ParsePow();
             while (Curr.Value == "+" || Curr.Value == "-")
             {
-                var op = Consume().Value; var r = ParseMul(); l = new BinaryExpressionNode(l, op, r);
+                var op = Consume().Value; var r = ParsePow(); l = new BinaryExpressionNode(l, op, r);
             }
             return l;
         }
@@ -218,6 +246,17 @@ namespace TranslatorCore
             while (new[] { "*", "/", "%" }.Contains(Curr.Value))
             {
                 var op = Consume().Value; var r = ParseUnary(); l = new BinaryExpressionNode(l, op, r);
+            }
+            return l;
+        }
+
+        private ExpressionNode ParsePow()
+        {
+            var l = ParseMul();
+            while (MatchValue("**"))
+            {
+                var r = ParseMul();
+                l = new BinaryExpressionNode(l, "**", r);
             }
             return l;
         }
@@ -248,7 +287,13 @@ namespace TranslatorCore
                 }
                 return ParseIndexOrCall(new IdentifierNode(nm));
             }
-            if (MatchValue("(")) { var e = ParseExpr(); Consume(); return e; }
+            if (MatchValue("("))
+            {
+                var e = ParseExpr();
+                if (!MatchValue(")"))
+                    throw new TranslationException($"Expected ')' at line {Curr.Line}, col {Curr.Column}");
+                return e;
+            }
             if (MatchValue("["))
             {
                 if (Curr.Type == TokenType.Identifier && Peek(1).Value == "for")
@@ -264,11 +309,12 @@ namespace TranslatorCore
                 if (!MatchValue("]"))
                 {
                     do { list.Elements.Add(ParseExpr()); } while (MatchValue(","));
-                    Consume();
+                    if (!MatchValue("]"))
+                        throw new TranslationException($"Expected ']' at line {Curr.Line}, col {Curr.Column}");
                 }
                 return list;
             }
-            throw new TranslationException($"Unexpected '{Curr.Value}' at line {Curr.Line}, col {Curr.Column}");
+            throw new TranslationException($"Unexpected token '{Curr.Value}' of type {Curr.Type} at line {Curr.Line}, col {Curr.Column}");
         }
 
         private ExpressionNode ParseIndexOrCall(ExpressionNode target)
