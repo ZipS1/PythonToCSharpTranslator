@@ -18,6 +18,7 @@ namespace TranslatorCore
             _sb.Clear();
             _sb.AppendLine("using System;");
             _sb.AppendLine("using System.Collections.Generic;");
+            _sb.AppendLine("using System.Collections;");
             _sb.AppendLine("using System.Linq;");
             _sb.AppendLine("namespace Translated");
             _sb.AppendLine("{");
@@ -25,6 +26,36 @@ namespace TranslatorCore
             _sb.AppendLine("public class Program");
             _sb.AppendLine("{");
             Indent();
+            // Helper to format objects like Python's print for lists and basic types
+            WriteIndent();
+            _sb.AppendLine("private static string PyRepr(dynamic value)");
+            WriteIndent();
+            _sb.AppendLine("{");
+            _indentLevel++;
+            WriteIndent();
+            _sb.AppendLine("if (value is null) return \"None\";");
+            WriteIndent();
+            _sb.AppendLine("if (value is string) return (string)value;");
+            WriteIndent();
+            _sb.AppendLine("if (value is IEnumerable enumerable && value is not string)");
+            WriteIndent();
+            _sb.AppendLine("{");
+            _indentLevel++;
+            WriteIndent();
+            _sb.AppendLine("var parts = new List<string>();");
+            WriteIndent();
+            _sb.AppendLine("foreach (var item in enumerable) parts.Add(PyRepr(item));");
+            WriteIndent();
+            _sb.AppendLine("return \"[\" + string.Join(\" , \", parts) + \"]\";");
+            _indentLevel--;
+            WriteIndent();
+            _sb.AppendLine("}");
+            WriteIndent();
+            _sb.AppendLine("return value.ToString();");
+            _indentLevel--;
+            WriteIndent();
+            _sb.AppendLine("}");
+            _sb.AppendLine("");
 
             foreach (var stmt in program.Statements)
                 if (stmt is FunctionNode fn) { VisitFunction(fn); _sb.AppendLine(); }
@@ -32,6 +63,7 @@ namespace TranslatorCore
             _sb.AppendLine("public static void Main()");
             _sb.AppendLine("{");
             _indentLevel++;
+            _declared.Clear();
             foreach (var stmt in program.Statements)
                 if (!(stmt is FunctionNode)) VisitStatement(stmt);
             _indentLevel--;
@@ -50,6 +82,7 @@ namespace TranslatorCore
             _sb.Append($"public static dynamic {fn.Name}(");
             _sb.Append(string.Join(", ", fn.Parameters.ConvertAll(p => $"dynamic {p}")));
             _sb.AppendLine(")");
+            _declared.Clear();
             WriteBlock(fn.Body);
         }
 
@@ -122,9 +155,10 @@ namespace TranslatorCore
                 case NumberNode n: return n.Value;
                 case StringNode s: return $"\"{s.Value}\"";
                 case IdentifierNode id:
-                    return id.Name == "random.randint"
-                        ? "new Random().Next"
-                        : id.Name;
+                    if (id.Name == "True") return "true";
+                    if (id.Name == "False") return "false";
+                    if (id.Name == "None") return "null";
+                    return id.Name;
                 case UnaryExpressionNode u:
                     var o = VisitExpression(u.Operand);
                     return u.Operator == "not" ? $"!{o}" : $"-{o}";
@@ -138,13 +172,28 @@ namespace TranslatorCore
                         _ => $"{l}{b.Operator}{r}"
                     };
                 case CallExpressionNode c:
-                    var args = string.Join(", ", c.Arguments.ConvertAll(VisitExpression));
+                    var argExprs = c.Arguments.ConvertAll(VisitExpression);
+                    var args = string.Join(", ", argExprs);
                     if (c.FunctionName == "random.randint")
-                        return $"new Random().Next({args})";
+                    {
+                        var a = VisitExpression(c.Arguments[0]);
+                        var b = VisitExpression(c.Arguments[1]);
+                        return $"new Random().Next({a}, {b} + 1)";
+                    }
+                    if (c.FunctionName == "len" && c.Arguments.Count == 1)
+                        return $"{VisitExpression(c.Arguments[0])}.Count";
+                    if (c.FunctionName.EndsWith(".append"))
+                    {
+                        var dot = c.FunctionName.LastIndexOf('.');
+                        var target = c.FunctionName.Substring(0, dot);
+                        return $"{target}.Add({args})";
+                    }
                     return c.FunctionName switch
                     {
                         "input" => "Console.ReadLine()",
-                        "print" => $"Console.WriteLine({args})",
+                        "print" => argExprs.Count == 0
+                            ? "Console.WriteLine()"
+                            : $"Console.WriteLine(string.Join(\" \", new [] {{ {string.Join(", ", argExprs.ConvertAll(a => $"PyRepr({a})"))} }}))",
                         "int" => $"int.Parse({args})",
                         "float" => $"double.Parse({args})",
                         "str" => $"{args}.ToString()",
@@ -156,7 +205,7 @@ namespace TranslatorCore
                     };
                 case ListNode ln:
                     var el = string.Join(", ", ln.Elements.ConvertAll(VisitExpression));
-                    return $"new dynamic[] {{ {el} }}";
+                    return $"new List<dynamic> {{ {el} }}";
                 case IndexExpressionNode ix:
                     return $"{VisitExpression(ix.Collection)}[{VisitExpression(ix.Index)}]";
                 case ComprehensionNode comp:

@@ -164,19 +164,26 @@ namespace TranslatorCore
 
         private ExpressionNode ParseEquality()
         {
-            var l = ParseRel();
-            while (new[] { "==", "!=", ">=", "<=" }.Contains(Curr.Value))
+            var left = ParseRel();
+            while (new[] { "==", "!=" }.Contains(Curr.Value))
             {
-                var op = Consume().Value; var r = ParseRel(); l = new BinaryExpressionNode(l, op, r);
+                var op = Consume().Value;
+                var right = ParseRel();
+                left = new BinaryExpressionNode(left, op, right);
             }
-            return l;
+            return left;
         }
 
         private ExpressionNode ParseRel()
         {
-            var l = ParseAdd();
-            while (MatchValue("in")) { var r = ParseAdd(); l = new BinaryExpressionNode(l, "in", r); }
-            return l;
+            var left = ParseAdd();
+            while (new[] { "<", ">", "<=", ">=", "in" }.Contains(Curr.Value))
+            {
+                var op = Consume().Value;
+                var right = ParseAdd();
+                left = new BinaryExpressionNode(left, op, right);
+            }
+            return left;
         }
 
         private ExpressionNode ParseAdd()
@@ -250,10 +257,30 @@ namespace TranslatorCore
 
         private ExpressionNode ParseIndexOrCall(ExpressionNode target)
         {
-            while (MatchValue("["))
+            // Support chained calls like obj.method(arg) and indexing obj[idx]
+            while (true)
             {
-                var idx = ParseExpr(); Consume();
-                target = new IndexExpressionNode(target, idx);
+                if (MatchValue("("))
+                {
+                    if (target is IdentifierNode idNode)
+                    {
+                        var call = new CallExpressionNode(idNode.Name);
+                        if (!MatchValue(")"))
+                        {
+                            do { call.Arguments.Add(ParseExpr()); } while (MatchValue(","));
+                            Consume();
+                        }
+                        target = call;
+                        continue;
+                    }
+                }
+                if (MatchValue("["))
+                {
+                    var idx = ParseExpr(); Consume();
+                    target = new IndexExpressionNode(target, idx);
+                    continue;
+                }
+                break;
             }
             return target;
         }

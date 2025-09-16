@@ -164,36 +164,6 @@ namespace TranslatorCore
                     continue;
                 }
 
-                // Triple-quoted strings
-                if (_pos + 2 < _source.Length &&
-                    ((_source[_pos] == '"' && _source[_pos + 1] == '"' && _source[_pos + 2] == '"') ||
-                     (_source[_pos] == '\'' && _source[_pos + 1] == '\'' && _source[_pos + 2] == '\'')))
-                {
-                    char quote = _source[_pos];
-                    int start = _pos;
-                    int col = _pos - _lineStart + 1;
-                    _pos += 3;
-                    var sb = new StringBuilder();
-                    while (_pos + 2 < _source.Length)
-                    {
-                        if (_source[_pos] == quote &&
-                            _source[_pos + 1] == quote &&
-                            _source[_pos + 2] == quote)
-                        {
-                            _pos += 3;
-                            break;
-                        }
-                        if (_source[_pos] == '\n')
-                        {
-                            _currentLine++;
-                            _lineStart = _pos + 1;
-                        }
-                        sb.Append(_source[_pos++]);
-                    }
-                    tokens.Add(new Token(TokenType.String, sb.ToString(), start, _currentLine, col));
-                    continue;
-                }
-
                 if (c == '"' || c == '\'')
                 {
                     char q = c;
