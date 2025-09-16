@@ -95,6 +95,20 @@ namespace TranslatorCore
                         count++;
                         _pos++;
                     }
+                    // If the rest of the line is a comment, treat the whole line as blank (no indent changes)
+                    if (_pos < _source.Length && _source[_pos] == '#')
+                    {
+                        while (_pos < _source.Length && _source[_pos] != '\n')
+                            _pos++;
+                        if (_pos < _source.Length && _source[_pos] == '\n')
+                        {
+                            tokens.Add(new Token(TokenType.NewLine, "", _pos, _currentLine, count + 1));
+                            _pos++;
+                            _currentLine++;
+                            _lineStart = _pos;
+                            continue;
+                        }
+                    }
                     if (_pos < _source.Length && _source[_pos] == '\n')
                     {
                         tokens.Add(new Token(TokenType.NewLine, "", _pos, _currentLine, count + 1));
@@ -134,6 +148,14 @@ namespace TranslatorCore
                 if (char.IsWhiteSpace(c))
                 {
                     _pos++;
+                    continue;
+                }
+
+                // Line comments starting with '#': skip until end of line
+                if (c == '#')
+                {
+                    while (_pos < _source.Length && _source[_pos] != '\n')
+                        _pos++;
                     continue;
                 }
 

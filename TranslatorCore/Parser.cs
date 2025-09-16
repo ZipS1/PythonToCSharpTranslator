@@ -87,7 +87,11 @@ namespace TranslatorCore
             Consume(); Match(TokenType.NewLine);
             if (Curr.Type == TokenType.String) { Consume(); Match(TokenType.NewLine); }
             if (!Match(TokenType.Indent)) throw new TranslationException($"Expected indent after def at line {Curr.Line}");
-            while (!Match(TokenType.Dedent)) fn.Body.Add(ParseStmt());
+            while (!Match(TokenType.Dedent))
+            {
+                if (Match(TokenType.NewLine)) continue;
+                fn.Body.Add(ParseStmt());
+            }
             return fn;
         }
 
@@ -95,8 +99,12 @@ namespace TranslatorCore
         {
             var cond = ParseExpr(); Consume(); Match(TokenType.NewLine); Consume();
             var n = new IfNode(cond);
-            while (!Match(TokenType.Dedent)) n.ThenBranch.Add(ParseStmt());
-            if (MatchValue("else")) { Consume(); Match(TokenType.NewLine); Consume(); while (!Match(TokenType.Dedent)) n.ElseBranch.Add(ParseStmt()); }
+            while (!Match(TokenType.Dedent))
+            {
+                if (Match(TokenType.NewLine)) continue;
+                n.ThenBranch.Add(ParseStmt());
+            }
+            if (MatchValue("else")) { Consume(); Match(TokenType.NewLine); Consume(); while (!Match(TokenType.Dedent)) { if (Match(TokenType.NewLine)) continue; n.ElseBranch.Add(ParseStmt()); } }
             return n;
         }
 
@@ -104,7 +112,11 @@ namespace TranslatorCore
         {
             var cond = ParseExpr(); Consume(); Match(TokenType.NewLine); Consume();
             var w = new WhileNode(cond);
-            while (!Match(TokenType.Dedent)) w.Body.Add(ParseStmt());
+            while (!Match(TokenType.Dedent))
+            {
+                if (Match(TokenType.NewLine)) continue;
+                w.Body.Add(ParseStmt());
+            }
             return w;
         }
 
@@ -118,7 +130,11 @@ namespace TranslatorCore
             var en = ParseExpr(); Consume();
             Consume(); Match(TokenType.NewLine); Consume();
             var f = new ForNode(iter, st, en);
-            while (!Match(TokenType.Dedent)) f.Body.Add(ParseStmt());
+            while (!Match(TokenType.Dedent))
+            {
+                if (Match(TokenType.NewLine)) continue;
+                f.Body.Add(ParseStmt());
+            }
             return f;
         }
 
