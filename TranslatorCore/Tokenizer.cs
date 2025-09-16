@@ -23,12 +23,15 @@ namespace TranslatorCore
         public TokenType Type { get; }
         public string Value { get; }
         public int Position { get; }
-
-        public Token(TokenType type, string value, int position)
+        public int Line { get; }
+        public int Column { get; }
+        public Token(TokenType type, string value, int position, int line, int column)
         {
             Type = type;
             Value = value;
             Position = position;
+            Line = line;
+            Column = column;
         }
     }
 
@@ -37,23 +40,40 @@ namespace TranslatorCore
         private readonly string _source;
         private int _pos;
         private int _lineStart;
+        private int _currentLine = 1;
         private readonly Stack<int> _indentStack = new();
 
-        private static readonly HashSet<string> Keywords = new() { "if", "else", "while", "for", "def", "return", "input", "print", "import", "set", "range" };
-        private static readonly HashSet<string> TwoCharSymbols = new() { "==", "!=", "<=", ">=", "//", "**" };
-        private static readonly HashSet<char> SingleSymbols = new() { '(', ')', ':', ',', '+', '-', '*', '/', '%', '=', '[', ']', '{', '}', '<', '>' };
+        private static readonly HashSet<string> Keywords = new()
+        {
+            "if", "else", "while", "for", "def", "return",
+            "input", "print", "import", "set", "range",
+            "in", "and", "or", "not"
+        };
+
+        private static readonly HashSet<string> TwoCharSymbols = new()
+        {
+            "==", "!=", "<=", ">=", "//", "**", "+=", "-=", "*=", "/="
+        };
+
+        private static readonly HashSet<char> SingleSymbols = new()
+        {
+            '(', ')', ':', ',', '+', '-', '*', '/', '%',
+            '=', '[', ']', '{', '}', '<', '>', '.'
+        };
 
         public Tokenizer(string source)
         {
             _source = source.Replace("\r\n", "\n");
             _pos = 0;
             _lineStart = 0;
+            _currentLine = 1;
             _indentStack.Push(0);
         }
 
         public List<Token> Tokenize()
         {
             var tokens = new List<Token>();
+
             while (true)
             {
                 if (_pos >= _source.Length)
@@ -61,9 +81,9 @@ namespace TranslatorCore
                     while (_indentStack.Count > 1)
                     {
                         _indentStack.Pop();
-                        tokens.Add(new Token(TokenType.Dedent, "", _pos));
+                        tokens.Add(new Token(TokenType.Dedent, "", _pos, _currentLine, _pos - _lineStart + 1));
                     }
-                    tokens.Add(new Token(TokenType.EndOfFile, "", _pos));
+                    tokens.Add(new Token(TokenType.EndOfFile, "", _pos, _currentLine, _pos - _lineStart + 1));
                     break;
                 }
 
@@ -77,16 +97,17 @@ namespace TranslatorCore
                     }
                     if (_pos < _source.Length && _source[_pos] == '\n')
                     {
+                        tokens.Add(new Token(TokenType.NewLine, "", _pos, _currentLine, count + 1));
                         _pos++;
+                        _currentLine++;
                         _lineStart = _pos;
-                        tokens.Add(new Token(TokenType.NewLine, "", _pos));
                         continue;
                     }
                     int prev = _indentStack.Peek();
                     if (count > prev)
                     {
                         _indentStack.Push(count);
-                        tokens.Add(new Token(TokenType.Indent, "", _pos));
+                        tokens.Add(new Token(TokenType.Indent, "", _pos, _currentLine, count + 1));
                     }
                     else
                     {
@@ -94,25 +115,18 @@ namespace TranslatorCore
                         {
                             _indentStack.Pop();
                             prev = _indentStack.Peek();
-                            tokens.Add(new Token(TokenType.Dedent, "", _pos));
+                            tokens.Add(new Token(TokenType.Dedent, "", _pos, _currentLine, count + 1));
                         }
                     }
                 }
 
                 char c = _source[_pos];
 
-                // Comments
-                if (c == '#')
-                {
-                    while (_pos < _source.Length && _source[_pos] != '\n')
-                        _pos++;
-                    continue;
-                }
-
                 if (c == '\n')
                 {
-                    tokens.Add(new Token(TokenType.NewLine, "", _pos));
+                    tokens.Add(new Token(TokenType.NewLine, "", _pos, _currentLine, _pos - _lineStart + 1));
                     _pos++;
+                    _currentLine++;
                     _lineStart = _pos;
                     continue;
                 }
@@ -126,21 +140,57 @@ namespace TranslatorCore
                 if (char.IsLetter(c) || c == '_')
                 {
                     int start = _pos;
+                    int col = _pos - _lineStart + 1;
                     var sb = new StringBuilder();
-                    while (_pos < _source.Length && (char.IsLetterOrDigit(_source[_pos]) || _source[_pos] == '_'))
+                    while (_pos < _source.Length &&
+                          (char.IsLetterOrDigit(_source[_pos]) || _source[_pos] == '_' || _source[_pos] == '.'))
+                    {
                         sb.Append(_source[_pos++]);
+                    }
                     string w = sb.ToString();
-                    tokens.Add(new Token(Keywords.Contains(w) ? TokenType.Keyword : TokenType.Identifier, w, start));
+                    tokens.Add(new Token(Keywords.Contains(w) ? TokenType.Keyword : TokenType.Identifier,
+                                         w, start, _currentLine, col));
                     continue;
                 }
 
                 if (char.IsDigit(c))
                 {
                     int start = _pos;
+                    int col = _pos - _lineStart + 1;
                     var sb = new StringBuilder();
                     while (_pos < _source.Length && char.IsDigit(_source[_pos]))
                         sb.Append(_source[_pos++]);
-                    tokens.Add(new Token(TokenType.Number, sb.ToString(), start));
+                    tokens.Add(new Token(TokenType.Number, sb.ToString(), start, _currentLine, col));
+                    continue;
+                }
+
+                // Triple-quoted strings
+                if (_pos + 2 < _source.Length &&
+                    ((_source[_pos] == '"' && _source[_pos + 1] == '"' && _source[_pos + 2] == '"') ||
+                     (_source[_pos] == '\'' && _source[_pos + 1] == '\'' && _source[_pos + 2] == '\'')))
+                {
+                    char quote = _source[_pos];
+                    int start = _pos;
+                    int col = _pos - _lineStart + 1;
+                    _pos += 3;
+                    var sb = new StringBuilder();
+                    while (_pos + 2 < _source.Length)
+                    {
+                        if (_source[_pos] == quote &&
+                            _source[_pos + 1] == quote &&
+                            _source[_pos + 2] == quote)
+                        {
+                            _pos += 3;
+                            break;
+                        }
+                        if (_source[_pos] == '\n')
+                        {
+                            _currentLine++;
+                            _lineStart = _pos + 1;
+                        }
+                        sb.Append(_source[_pos++]);
+                    }
+                    tokens.Add(new Token(TokenType.String, sb.ToString(), start, _currentLine, col));
                     continue;
                 }
 
@@ -148,11 +198,12 @@ namespace TranslatorCore
                 {
                     char q = c;
                     int start = _pos++;
+                    int col = start - _lineStart + 1;
                     var sb = new StringBuilder();
                     while (_pos < _source.Length && _source[_pos] != q)
                         sb.Append(_source[_pos++]);
                     _pos++;
-                    tokens.Add(new Token(TokenType.String, sb.ToString(), start));
+                    tokens.Add(new Token(TokenType.String, sb.ToString(), start, _currentLine, col));
                     continue;
                 }
 
@@ -161,7 +212,7 @@ namespace TranslatorCore
                     string two = _source.Substring(_pos, 2);
                     if (TwoCharSymbols.Contains(two))
                     {
-                        tokens.Add(new Token(TokenType.Symbol, two, _pos));
+                        tokens.Add(new Token(TokenType.Symbol, two, _pos, _currentLine, _pos - _lineStart + 1));
                         _pos += 2;
                         continue;
                     }
@@ -169,13 +220,15 @@ namespace TranslatorCore
 
                 if (SingleSymbols.Contains(c))
                 {
-                    tokens.Add(new Token(TokenType.Symbol, c.ToString(), _pos));
+                    tokens.Add(new Token(TokenType.Symbol, c.ToString(), _pos, _currentLine, _pos - _lineStart + 1));
                     _pos++;
                     continue;
                 }
 
-                throw new TranslationException($"Неожиданный символ '{c}' на позиции {_pos}");
+                throw new TranslationException(
+                    $"Неожиданный символ '{c}' на строке {_currentLine}, позиция {_pos - _lineStart + 1}");
             }
+
             return tokens;
         }
     }
